@@ -4,8 +4,14 @@
 #include "Character/USGCharacter.h"
 
 #include "Camera/CameraComponent.h"
+#include "Engine/SkeletalMeshSocket.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundCue.h"
+#include "DrawDebugHelpers.h"
+#include "Particles/ParticleSystem.h"
+#include "Particles/ParticleSystemComponent.h"
 
 ////////////////////////////////////////////////////////////
 
@@ -47,7 +53,7 @@ void AUSGCharacter::BeginPlay()
 
 void AUSGCharacter::MoveForward(float Value)
 {
-	/** Using function IsNearlyEquil allow to set barrier for joystick drifts*/
+	/** Using function IsNearlyEquil allow to set barrier for joystick drifts */
 	if (!Controller || FMath::IsNearlyEqual(Value, 0.0f, 0.001f)) return;
 
 	const FRotator Rotation{ Controller->GetControlRotation() };
@@ -89,6 +95,68 @@ void AUSGCharacter::LookUpRate(float Rate)
 
 ////////////////////////////////////////////////////////////
 
+void AUSGCharacter::FireWeapon()
+{
+	UE_LOG(LogTemp, Warning, TEXT("Bullet is landed"));
+
+	if (FireSound)
+	{
+		UGameplayStatics::PlaySound2D(this, FireSound);
+	}
+
+	const USkeletalMeshSocket* BarrelSocket = GetMesh()->GetSocketByName("BarrelSocket");
+	if (BarrelSocket)
+	{
+		const FTransform SocketTransform = BarrelSocket->GetSocketTransform(GetMesh());
+
+		if (MuzzleFlash)
+		{
+			UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), MuzzleFlash, SocketTransform);
+		}
+
+		FHitResult FireHit;
+		const FVector FireStartLocation{ SocketTransform.GetLocation() };
+		const FQuat Rotation{ SocketTransform.GetRotation() };
+		const FVector RotationAxis{ Rotation.GetAxisX() };
+		const FVector FireEndLocation{ FireStartLocation + RotationAxis * 50'000.f };
+
+		FVector BeamEndPoint{ FireEndLocation };
+
+		GetWorld()->LineTraceSingleByChannel(FireHit, FireStartLocation, FireEndLocation, ECollisionChannel::ECC_Visibility);
+
+		if (FireHit.bBlockingHit)
+		{
+			//DrawDebugLine(GetWorld(), FireStartLocation, FireEndLocation, FColor::Red, false, 2.f);
+			//DrawDebugPoint(GetWorld(), FireHit.Location, 5.0f, FColor::Red, false, 2.0f);
+
+			BeamEndPoint = FireHit.Location;
+
+			if (ImpactParticles)
+			{
+				UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ImpactParticles, FireHit.Location);
+			}
+
+			if(BeamParticles)
+			{
+				UParticleSystemComponent* Beam = UGameplayStatics::SpawnEmitterAtLocation(GetWorld(),BeamParticles, SocketTransform);
+				if(Beam)
+				{
+					Beam->SetVectorParameter(FName("Target"),BeamEndPoint);
+				}
+			}
+		}
+	}
+
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (AnimInstance && HipFireMontage)
+	{
+		AnimInstance->Montage_Play(HipFireMontage);
+		AnimInstance->Montage_JumpToSection(FName("StartFire"));
+	}
+}
+
+////////////////////////////////////////////////////////////
+
 void AUSGCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -109,6 +177,8 @@ void AUSGCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
 	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
+
+	PlayerInputComponent->BindAction("FireButton", IE_Pressed, this, &AUSGCharacter::FireWeapon);
 }
 
 ////////////////////////////////////////////////////////////
