@@ -44,6 +44,8 @@ void UUSGAnimInstance::UpdateAnimationProperties(float DeltaTime)
 	{
 		MovementOffsetYaw = UKismetMathLibrary::NormalizedDeltaRotator(MovementRotation, AimRotation).Yaw;
 	}
+
+	bAiming = USGCharacter->GetAiming();
 }
 
 ////////////////////////////////////////////////////////////

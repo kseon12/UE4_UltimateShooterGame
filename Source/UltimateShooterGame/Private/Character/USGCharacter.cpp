@@ -15,17 +15,33 @@
 
 ////////////////////////////////////////////////////////////
 
-AUSGCharacter::AUSGCharacter():
+AUSGCharacter::AUSGCharacter() :
 	BaseTurnRate(45.f),
-	BaseLookUpRate(45.f)
+	BaseLookUpRate(45.f),
+	HipTurnRate(90.f),
+	//Camera FOV values
+	HipLookUpRate(90.f),
+	AimingTurnRate(30.f),
+	AimingLookUpRate(30.f),
+	MouseHipTurnRate(1.f),
+	//Controller rates for aiming or not
+	MouseHipLookUpRate(1.f),
+	MouseAimingTurnRate(0.3f),
+	MouseAimingLookUpRate(0.3f),
+	bAiming(false),
+	//Mouse rates for aiming or not
+	CameraDefaultFOV(90.f),
+	CameraZoomedFOV(35.f),
+	CameraCurrentFOV(90.f),
+	ZoomInterpSpeed(20.f)
 {
 	PrimaryActorTick.bCanEverTick = true;
 
 	//Create SpringArmComponent 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
-	CameraBoom->TargetArmLength = 500.0f;
+	CameraBoom->TargetArmLength = 180.0f;
 	CameraBoom->bUsePawnControlRotation = true;
-	CameraBoom->SocketOffset = FVector(0.f, 50.f, 50.f);
+	CameraBoom->SocketOffset = FVector(0.f, 50.f, 70.f);
 	CameraBoom->SetupAttachment(RootComponent);
 
 	//Create CameraComponent
@@ -48,6 +64,12 @@ AUSGCharacter::AUSGCharacter():
 void AUSGCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (FollowCamera)
+	{
+		CameraDefaultFOV = GetFollowCamera()->FieldOfView;
+		CameraCurrentFOV = CameraDefaultFOV;
+	}
 }
 
 ////////////////////////////////////////////////////////////
@@ -92,6 +114,41 @@ void AUSGCharacter::TurnAtRate(float Rate)
 void AUSGCharacter::LookUpRate(float Rate)
 {
 	AddControllerPitchInput(Rate * BaseLookUpRate * GetWorld()->GetDeltaSeconds());
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::Turn(float Value)
+{
+	float TurnScaleFactor;
+
+	if (bAiming)
+	{
+		TurnScaleFactor = MouseAimingTurnRate;
+	}
+	else
+	{
+		TurnScaleFactor = MouseHipTurnRate;
+	}
+
+	AddControllerYawInput(Value * TurnScaleFactor);
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::LookUp(float Value)
+{
+	float LookUpScaleFactor;
+
+	if (bAiming)
+	{
+		LookUpScaleFactor = MouseAimingLookUpRate;
+	}
+	else
+	{
+		LookUpScaleFactor = MouseHipLookUpRate;
+	}
+	AddControllerPitchInput(Value * LookUpScaleFactor);
 }
 
 ////////////////////////////////////////////////////////////
@@ -183,7 +240,8 @@ bool AUSGCharacter::GetBeamEndLocation(const FVector& MuzzleSocketLocation, FVec
 			const FVector WeaponTraceStart{ MuzzleSocketLocation };
 			const FVector WeaponTraceEnd{ OutBeamLocation };
 
-			GetWorld()->LineTraceSingleByChannel(WeaponTraceHit, WeaponTraceStart, WeaponTraceEnd, ECollisionChannel::ECC_Visibility);
+			GetWorld()->LineTraceSingleByChannel(WeaponTraceHit, WeaponTraceStart, WeaponTraceEnd,
+			                                     ECollisionChannel::ECC_Visibility);
 
 			//Object between barrel and end point
 			if (WeaponTraceHit.bBlockingHit)
@@ -200,9 +258,57 @@ bool AUSGCharacter::GetBeamEndLocation(const FVector& MuzzleSocketLocation, FVec
 
 ////////////////////////////////////////////////////////////
 
+void AUSGCharacter::AimingButtonPressed()
+{
+	bAiming = true;
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::AimingButtonReleased()
+{
+	bAiming = false;
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::CameraInterpZoom(float DeltaTime)
+{
+	if (bAiming)
+	{
+		CameraCurrentFOV = FMath::FInterpTo(CameraCurrentFOV, CameraZoomedFOV, DeltaTime, ZoomInterpSpeed);
+	}
+	else
+	{
+		CameraCurrentFOV = FMath::FInterpTo(CameraCurrentFOV, CameraDefaultFOV, DeltaTime, ZoomInterpSpeed);
+	}
+	GetFollowCamera()->SetFieldOfView(CameraCurrentFOV);
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::SetLookRates()
+{
+	if (bAiming)
+	{
+		BaseTurnRate = AimingLookUpRate;
+		BaseLookUpRate = AimingLookUpRate;
+	}
+	else
+	{
+		BaseTurnRate = HipTurnRate;
+		BaseLookUpRate = HipLookUpRate;
+	}
+}
+
+////////////////////////////////////////////////////////////
+
 void AUSGCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	CameraInterpZoom(DeltaTime);
+	SetLookRates();
 }
 
 ////////////////////////////////////////////////////////////
@@ -215,13 +321,16 @@ void AUSGCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 	PlayerInputComponent->BindAxis("MoveRight", this, &AUSGCharacter::MoveRight);
 	PlayerInputComponent->BindAxis("TurnRate", this, &AUSGCharacter::TurnAtRate);
 	PlayerInputComponent->BindAxis("LookUpRate", this, &AUSGCharacter::LookUpRate);
-	PlayerInputComponent->BindAxis("Turn", this, &APawn::AddControllerYawInput);
-	PlayerInputComponent->BindAxis("LookUp", this, &APawn::AddControllerPitchInput);
+	PlayerInputComponent->BindAxis("Turn", this, &AUSGCharacter::Turn);
+	PlayerInputComponent->BindAxis("LookUp", this, &AUSGCharacter::LookUp);
 
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
 	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
 
 	PlayerInputComponent->BindAction("FireButton", IE_Pressed, this, &AUSGCharacter::FireWeapon);
+
+	PlayerInputComponent->BindAction("AimingButton", IE_Pressed, this, &AUSGCharacter::AimingButtonPressed);
+	PlayerInputComponent->BindAction("AimingButton", IE_Released, this, &AUSGCharacter::AimingButtonReleased);
 }
 
 ////////////////////////////////////////////////////////////
