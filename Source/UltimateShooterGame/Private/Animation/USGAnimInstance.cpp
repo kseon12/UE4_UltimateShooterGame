@@ -4,6 +4,7 @@
 #include "Character/USGCharacter.h"
 
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Kismet/KismetMathLibrary.h"
 
 ////////////////////////////////////////////////////////////
 
@@ -25,7 +26,7 @@ void UUSGAnimInstance::UpdateAnimationProperties(float DeltaTime)
 		if (!USGCharacter) return;
 	}
 
-	FVector Velocity{USGCharacter->GetVelocity()};
+	FVector Velocity{ USGCharacter->GetVelocity() };
 	Velocity.Z = 0.0f;
 
 	Speed = Velocity.Size();
@@ -34,6 +35,15 @@ void UUSGAnimInstance::UpdateAnimationProperties(float DeltaTime)
 
 	//If acceleration magnitude greater than zero - character is accelerating
 	bIsAccelerating = USGCharacter->GetCharacterMovement()->GetCurrentAcceleration().Size() > 0.f;
+
+	FRotator AimRotation = USGCharacter->GetBaseAimRotation();
+	FRotator MovementRotation = UKismetMathLibrary::MakeRotFromX(USGCharacter->GetVelocity());
+
+	//This prevents from overriding MovementOffsetYaw with zero, and losing last angle to play right JogStop animation
+	if (USGCharacter->GetVelocity().Size() > 0.f)
+	{
+		MovementOffsetYaw = UKismetMathLibrary::NormalizedDeltaRotator(MovementRotation, AimRotation).Yaw;
+	}
 }
 
 ////////////////////////////////////////////////////////////

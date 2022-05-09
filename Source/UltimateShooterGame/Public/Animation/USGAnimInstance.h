@@ -32,4 +32,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere,BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess="true"))
 	bool bIsAccelerating;
+
+	/** Offset yaw used for strafing (angle between Velocity and Aim) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Movement, meta = (AllowPrivateAccess = "true"))
+	float MovementOffsetYaw;
+
 };
