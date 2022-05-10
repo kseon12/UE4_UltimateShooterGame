@@ -9,7 +9,6 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundCue.h"
-#include "DrawDebugHelpers.h"
 #include "Particles/ParticleSystem.h"
 #include "Particles/ParticleSystemComponent.h"
 
@@ -33,7 +32,16 @@ AUSGCharacter::AUSGCharacter() :
 	CameraDefaultFOV(90.f),
 	CameraZoomedFOV(35.f),
 	CameraCurrentFOV(90.f),
-	ZoomInterpSpeed(20.f)
+	ZoomInterpSpeed(20.f),
+	//Crosshair default values
+	CrosshairSpreadMultiplier(0.f),
+	CrosshairVelocityFactor(0.f),
+	CrosshairInAirFactor(0.f),
+	CrosshairAimFactor(0.f),
+	CrosshairShootingFactor(0.f),
+	//Bullet fire timer variables
+	ShootTimeDuration(0.05f),
+	bFiringBullet(false)
 {
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -200,6 +208,8 @@ void AUSGCharacter::FireWeapon()
 		AnimInstance->Montage_Play(HipFireMontage);
 		AnimInstance->Montage_JumpToSection(FName("StartFire"));
 	}
+
+	StartCrosshairBulletFire();
 }
 
 ////////////////////////////////////////////////////////////
@@ -212,7 +222,7 @@ bool AUSGCharacter::GetBeamEndLocation(const FVector& MuzzleSocketLocation, FVec
 		GEngine->GameViewport->GetViewportSize(ViewportSize);
 	}
 
-	FVector2D CrosshairLocation(ViewportSize.X / 2.f, ViewportSize.Y / 2.f - 50.f);
+	FVector2D CrosshairLocation(ViewportSize.X / 2.f, ViewportSize.Y / 2.f );
 	FVector CrosshairWorldPosition;
 	FVector CrosshairWorldDirection;
 
@@ -303,12 +313,72 @@ void AUSGCharacter::SetLookRates()
 
 ////////////////////////////////////////////////////////////
 
+void AUSGCharacter::CalculateCrosshairSpread(float DeltaTime)
+{
+	//CrosshairVelocityFactor calculation
+	FVector2D WalkSpeedRange{ 0.f, 600.f };
+	FVector2D VelocityMultiplierRange{ 0.f, 1.f };
+	FVector Velocity{ GetVelocity() };
+	Velocity.Z = 0.f;
+
+	CrosshairVelocityFactor = FMath::GetMappedRangeValueClamped(WalkSpeedRange, VelocityMultiplierRange, Velocity.Size());
+
+	//CrosshairInAirFactor calculation
+	if (GetCharacterMovement()->IsFalling())
+	{
+		CrosshairInAirFactor = FMath::FInterpTo(CrosshairInAirFactor, 2.25f, DeltaTime, 2.25f);
+	}
+	else
+	{
+		CrosshairInAirFactor = FMath::FInterpTo(CrosshairInAirFactor, 0.f, DeltaTime, 30.f);
+	}
+
+	//CrosshairAimFactor
+	if (bAiming)
+	{
+		CrosshairAimFactor = FMath::FInterpTo(CrosshairAimFactor, -0.5f, DeltaTime, 10.f);
+	}
+	else
+	{
+		CrosshairAimFactor = FMath::FInterpTo(CrosshairAimFactor, 0.f, DeltaTime, 30.f);
+	}
+
+	if (bFiringBullet)
+	{
+		CrosshairShootingFactor = FMath::FInterpTo(CrosshairShootingFactor, 0.3f, DeltaTime, 60.f);
+	}
+	else
+	{
+		CrosshairShootingFactor = FMath::FInterpTo(CrosshairShootingFactor, 0.f, DeltaTime, 60.f);
+	}
+
+	CrosshairSpreadMultiplier = 0.5f + CrosshairVelocityFactor + CrosshairInAirFactor + CrosshairAimFactor + CrosshairShootingFactor;
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::StartCrosshairBulletFire()
+{
+	bFiringBullet = true;
+	GetWorldTimerManager().SetTimer(CrosshairShootTimer, this, &AUSGCharacter::FinishCrosshairBulletFire, ShootTimeDuration);
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::FinishCrosshairBulletFire()
+{
+	bFiringBullet = false;
+}
+
+////////////////////////////////////////////////////////////
+
 void AUSGCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
 	CameraInterpZoom(DeltaTime);
 	SetLookRates();
+	CalculateCrosshairSpread(DeltaTime);
 }
 
 ////////////////////////////////////////////////////////////
@@ -331,6 +401,13 @@ void AUSGCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 
 	PlayerInputComponent->BindAction("AimingButton", IE_Pressed, this, &AUSGCharacter::AimingButtonPressed);
 	PlayerInputComponent->BindAction("AimingButton", IE_Released, this, &AUSGCharacter::AimingButtonReleased);
+}
+
+////////////////////////////////////////////////////////////
+
+float AUSGCharacter::GetCrosshairSpreadMultiplier() const
+{
+	return CrosshairSpreadMultiplier;
 }
 
 ////////////////////////////////////////////////////////////

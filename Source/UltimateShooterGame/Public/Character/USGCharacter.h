@@ -77,15 +77,24 @@ class ULTIMATESHOOTERGAME_API AUSGCharacter : public ACharacter
 	float CameraCurrentFOV;
 
 	/** Speed of transition between Normal and Aiming FOV*/
-	UPROPERTY(EditAnywhere,BlueprintReadWrite, Category=Combat, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere,BlueprintReadWrite, Category = Combat, meta = (AllowPrivateAccess = "true"))
 	float ZoomInterpSpeed;
 
-public:
-	AUSGCharacter();
+	/** Crosshair variables */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Crosshair, meta = (AllowPrivateAccess = "true"))
+	float CrosshairSpreadMultiplier;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Crosshair, meta = (AllowPrivateAccess = "true"))
+	float CrosshairVelocityFactor;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Crosshair, meta = (AllowPrivateAccess = "true"))
+	float CrosshairInAirFactor;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Crosshair, meta = (AllowPrivateAccess = "true"))
+	float CrosshairAimFactor;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Crosshair, meta = (AllowPrivateAccess = "true"))
+	float CrosshairShootingFactor;
 
-	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
-	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
-	FORCEINLINE bool GetAiming() const { return bAiming; }
+	float ShootTimeDuration;
+	bool bFiringBullet;
+	FTimerHandle CrosshairShootTimer;
 
 protected:
 	virtual void BeginPlay() override;
@@ -132,10 +141,26 @@ protected:
 
 	/** Set TurnRate and LookUp rate based on Aiming */
 	void SetLookRates();
+
+	void CalculateCrosshairSpread(float DeltaTime);
+
+	
+	void StartCrosshairBulletFire();
+	UFUNCTION()
+	void FinishCrosshairBulletFire();
+
 public:
-	// Called every frame
+
+	AUSGCharacter();
+	
 	virtual void Tick(float DeltaTime) override;
 
-	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
+	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+	FORCEINLINE bool GetAiming() const { return bAiming; }
+
+	UFUNCTION(BlueprintCallable)
+	float GetCrosshairSpreadMultiplier() const;
 };
