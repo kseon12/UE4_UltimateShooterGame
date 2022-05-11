@@ -154,12 +154,15 @@ protected:
 	UFUNCTION()
 	void FinishCrosshairBulletFire();
 
+	/** Temporary gun fire functions */
 	void FireButtonPressed();
 	void FireButtonRelease();
 	void StartFireTimer();
 	UFUNCTION()
 	void AutoFireReset();
 
+	/** Linetrace for items under crosshair */
+	bool TraceUnderCrosshairs(FHitResult& OutHitResult, FVector& OutHitLocation);
 public:
 
 	AUSGCharacter();
