@@ -96,6 +96,11 @@ class ULTIMATESHOOTERGAME_API AUSGCharacter : public ACharacter
 	bool bFiringBullet;
 	FTimerHandle CrosshairShootTimer;
 
+	bool bFireButtonPressed;
+	bool bShouldFire;
+	float AutomaticFireRate;
+	FTimerHandle AutoFireTimer;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -148,6 +153,12 @@ protected:
 	void StartCrosshairBulletFire();
 	UFUNCTION()
 	void FinishCrosshairBulletFire();
+
+	void FireButtonPressed();
+	void FireButtonRelease();
+	void StartFireTimer();
+	UFUNCTION()
+	void AutoFireReset();
 
 public:
 

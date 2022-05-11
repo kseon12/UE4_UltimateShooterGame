@@ -41,7 +41,11 @@ AUSGCharacter::AUSGCharacter() :
 	CrosshairShootingFactor(0.f),
 	//Bullet fire timer variables
 	ShootTimeDuration(0.05f),
-	bFiringBullet(false)
+	bFiringBullet(false),
+	//Automatic gun fire rate
+	bFireButtonPressed(false),
+	bShouldFire(true),
+	AutomaticFireRate(0.1f)
 {
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -222,7 +226,7 @@ bool AUSGCharacter::GetBeamEndLocation(const FVector& MuzzleSocketLocation, FVec
 		GEngine->GameViewport->GetViewportSize(ViewportSize);
 	}
 
-	FVector2D CrosshairLocation(ViewportSize.X / 2.f, ViewportSize.Y / 2.f );
+	FVector2D CrosshairLocation(ViewportSize.X / 2.f, ViewportSize.Y / 2.f);
 	FVector CrosshairWorldPosition;
 	FVector CrosshairWorldDirection;
 
@@ -372,6 +376,47 @@ void AUSGCharacter::FinishCrosshairBulletFire()
 
 ////////////////////////////////////////////////////////////
 
+void AUSGCharacter::FireButtonPressed()
+{
+	bFireButtonPressed = true;
+
+	StartFireTimer();
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::FireButtonRelease()
+{
+	bFireButtonPressed = false;
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::StartFireTimer()
+{
+	if (bShouldFire)
+	{
+		FireWeapon();
+		bShouldFire = false;
+
+		GetWorldTimerManager().SetTimer(AutoFireTimer, this, &AUSGCharacter::AutoFireReset, AutomaticFireRate);
+	}
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::AutoFireReset()
+{
+	bShouldFire = true;
+
+	if (bFireButtonPressed)
+	{
+		StartFireTimer();
+	}
+}
+
+////////////////////////////////////////////////////////////
+
 void AUSGCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -397,7 +442,8 @@ void AUSGCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
 	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
 
-	PlayerInputComponent->BindAction("FireButton", IE_Pressed, this, &AUSGCharacter::FireWeapon);
+	PlayerInputComponent->BindAction("FireButton", IE_Pressed, this, &AUSGCharacter::FireButtonPressed);
+	PlayerInputComponent->BindAction("FireButton", IE_Released, this, &AUSGCharacter::FireButtonRelease);
 
 	PlayerInputComponent->BindAction("AimingButton", IE_Pressed, this, &AUSGCharacter::AimingButtonPressed);
 	PlayerInputComponent->BindAction("AimingButton", IE_Released, this, &AUSGCharacter::AimingButtonReleased);
