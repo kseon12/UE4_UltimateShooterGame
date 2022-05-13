@@ -3,8 +3,11 @@
 
 #include "Character/USGCharacter.h"
 #include "Items/BaseItem.h"
+#include "Items/Weapon/BaseWeapon.h"
 
 #include "Camera/CameraComponent.h"
+#include "Components/SphereComponent.h"
+#include "Components/BoxComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/SkeletalMeshSocket.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -47,7 +50,12 @@ AUSGCharacter::AUSGCharacter() :
 	//Automatic gun fire rate
 	bFireButtonPressed(false),
 	bShouldFire(true),
-	AutomaticFireRate(0.1f)
+	AutomaticFireRate(0.1f),
+	//Item trace variables
+	bShouldTraceForItem(false),
+	//Item iterp values
+	CameraInterpDistance(250.f),
+	CameraInterpElevation(65.f)
 {
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -84,6 +92,8 @@ void AUSGCharacter::BeginPlay()
 		CameraDefaultFOV = GetFollowCamera()->FieldOfView;
 		CameraCurrentFOV = CameraDefaultFOV;
 	}
+
+	EquipWeapon(SpawnDefaultWeapon());
 }
 
 ////////////////////////////////////////////////////////////
@@ -430,6 +440,113 @@ bool AUSGCharacter::TraceUnderCrosshairs(FHitResult& OutHitResult, FVector& OutH
 
 ////////////////////////////////////////////////////////////
 
+void AUSGCharacter::TraceForItems()
+{
+	if (bShouldTraceForItem)
+	{
+		FHitResult ItemTraceResult;
+		FVector HitLocation;
+		TraceUnderCrosshairs(ItemTraceResult, HitLocation);
+		if (ItemTraceResult.bBlockingHit)
+		{
+			TraceHitItem = Cast<ABaseItem>(ItemTraceResult.Actor);
+			if (TraceHitItem && TraceHitItem->GetPickupWidget())
+			{
+				TraceHitItem->GetPickupWidget()->SetVisibility(true);
+			}
+
+			//If item we looking at changed - turn of widget of last item
+			if (TraceHitItemLastFrame)
+			{
+				if (TraceHitItem != TraceHitItemLastFrame)
+				{
+					TraceHitItemLastFrame->GetPickupWidget()->SetVisibility(false);
+				}
+			}
+
+			//Save new item reference for next frame
+			TraceHitItemLastFrame = TraceHitItem;
+		}
+	}
+	else if (TraceHitItemLastFrame)
+	{
+		//Also turn off item widget if we no longer looking at any item
+		TraceHitItemLastFrame->GetPickupWidget()->SetVisibility(false);
+	}
+}
+
+////////////////////////////////////////////////////////////
+
+ABaseWeapon* AUSGCharacter::SpawnDefaultWeapon()
+{
+	if (DefaultWeaponClass)
+	{
+		return GetWorld()->SpawnActor<ABaseWeapon>(DefaultWeaponClass);
+	}
+
+	return nullptr;
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::EquipWeapon(ABaseWeapon* WeaponToEquip)
+{
+	if (WeaponToEquip)
+	{
+		const USkeletalMeshSocket* HandSocket = GetMesh()->GetSocketByName(FName("RightHandSocket"));
+
+		if (HandSocket)
+		{
+			HandSocket->AttachActor(WeaponToEquip, GetMesh());
+		}
+
+		EquippedWeapon = WeaponToEquip;
+		EquippedWeapon->SetItemState(EItemState::EIS_Equipped);
+	}
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::DropWeapon()
+{
+	if (EquippedWeapon)
+	{
+		FDetachmentTransformRules DetachmentTransformRules(EDetachmentRule::KeepWorld, true);
+		EquippedWeapon->GetItemMesh()->DetachFromComponent(DetachmentTransformRules);
+
+		EquippedWeapon->SetItemState(EItemState::EIS_Falling);
+		EquippedWeapon->ThrowWeapon();
+	}
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::SelectButtonPressed()
+{
+	if (TraceHitItem)
+	{
+		TraceHitItem->StartItemCurve(this);
+	}
+}
+
+/////////////////////////////////////T///////////////////////
+
+void AUSGCharacter::SelectButtonReleased()
+{
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::SwapWeapon(ABaseWeapon* Weapon)
+{
+	DropWeapon();
+	EquipWeapon(Weapon);
+	TraceHitItem = nullptr;
+	TraceHitItemLastFrame = nullptr;
+}
+
+////////////////////////////////////////////////////////////
+
 void AUSGCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -438,17 +555,7 @@ void AUSGCharacter::Tick(float DeltaTime)
 	SetLookRates();
 	CalculateCrosshairSpread(DeltaTime);
 
-	FHitResult ItemTraceResult;
-	FVector HitLocation;
-	TraceUnderCrosshairs(ItemTraceResult, HitLocation);
-	if (ItemTraceResult.bBlockingHit)
-	{
-		ABaseItem* HitItem = Cast<ABaseItem>(ItemTraceResult.Actor);
-		if (HitItem && HitItem->GetPickupWidget())
-		{
-			HitItem->GetPickupWidget()->SetVisibility(true);
-		}
-	}
+	TraceForItems();
 }
 
 ////////////////////////////////////////////////////////////
@@ -472,13 +579,55 @@ void AUSGCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 
 	PlayerInputComponent->BindAction("AimingButton", IE_Pressed, this, &AUSGCharacter::AimingButtonPressed);
 	PlayerInputComponent->BindAction("AimingButton", IE_Released, this, &AUSGCharacter::AimingButtonReleased);
+
+	PlayerInputComponent->BindAction("Select", IE_Pressed, this, &AUSGCharacter::SelectButtonPressed);
+	PlayerInputComponent->BindAction("Select", IE_Released, this, &AUSGCharacter::SelectButtonReleased);
 }
 
 ////////////////////////////////////////////////////////////
 
+void AUSGCharacter::IncrementOverlappedICount()
+{
+	++OverlappedItemCount;
+	bShouldTraceForItem = true;
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::DecrementOverlappedCount()
+{
+	if (--OverlappedItemCount <= 0)
+	{
+		OverlappedItemCount = 0;
+		bShouldTraceForItem = false;
+	}
+}
+
 float AUSGCharacter::GetCrosshairSpreadMultiplier() const
 {
 	return CrosshairSpreadMultiplier;
+}
+
+////////////////////////////////////////////////////////////
+
+FVector AUSGCharacter::GetCameraInterpLocation()
+{
+	const FVector CameraWorldLocation{ FollowCamera->GetComponentLocation() };
+	const FVector CameraForward{ FollowCamera->GetForwardVector() };
+
+	return CameraWorldLocation + CameraForward * CameraInterpDistance + FVector(0.f, 0.f, CameraInterpElevation);
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::GetPickupItem(ABaseItem* Item)
+{
+	ABaseWeapon* Weapon = Cast<ABaseWeapon>(Item);
+	if(Weapon)
+	{
+		SwapWeapon(Weapon);
+	}
+
 }
 
 ////////////////////////////////////////////////////////////

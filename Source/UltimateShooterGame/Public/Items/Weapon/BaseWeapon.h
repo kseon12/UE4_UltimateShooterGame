@@ -13,5 +13,20 @@ UCLASS()
 class ULTIMATESHOOTERGAME_API ABaseWeapon : public ABaseItem
 {
 	GENERATED_BODY()
-	
+
+public:
+	ABaseWeapon();
+
+	virtual void Tick(float DeltaSeconds) override;
+
+protected:
+	void StopFalling();
+
+private:
+	FTimerHandle ThrowWeaponTimer;
+	float ThrowWeaponTime;
+	bool bIsFalling;
+
+public:
+	void ThrowWeapon();
 };

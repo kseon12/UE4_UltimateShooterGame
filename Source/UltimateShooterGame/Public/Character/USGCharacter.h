@@ -101,6 +101,29 @@ class ULTIMATESHOOTERGAME_API AUSGCharacter : public ACharacter
 	float AutomaticFireRate;
 	FTimerHandle AutoFireTimer;
 
+	bool bShouldTraceForItem;
+	int8 OverlappedItemCount;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Items, meta = (AllowPrivateAccess = "true"))
+	class ABaseItem* TraceHitItemLastFrame;
+
+	UPROPERTY(VisibleAnywhere,BlueprintReadOnly, Category = Combat, meta = (AllowPrivateAccess = "true"))
+	class ABaseWeapon* EquippedWeapon;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Combat, meta = (AllowPrivateAccess = "true"))
+	TSubclassOf<ABaseWeapon> DefaultWeaponClass;
+
+	/** The item we currently hit by our trace in TraceForItem (can be null) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Combat, meta = (AllowPrivateAccess = "true"))
+	ABaseItem* TraceHitItem;
+
+	/** Distance outward from camera for the interp destination */
+	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = Items, meta = (AllowPrivateAccess = "true"))
+	float CameraInterpDistance;
+
+	/** Distance upward from the camera for the interp destination */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Items, meta = (AllowPrivateAccess = "true"))
+	float CameraInterpElevation;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -163,6 +186,17 @@ protected:
 
 	/** Linetrace for items under crosshair */
 	bool TraceUnderCrosshairs(FHitResult& OutHitResult, FVector& OutHitLocation);
+
+	void TraceForItems();
+
+	ABaseWeapon* SpawnDefaultWeapon();
+	void EquipWeapon(ABaseWeapon* WeaponToEquip);
+	void DropWeapon();
+
+	void SelectButtonPressed();
+	void SelectButtonReleased();
+
+	void SwapWeapon(ABaseWeapon* Weapon);
 public:
 
 	AUSGCharacter();
@@ -174,7 +208,15 @@ public:
 	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 	FORCEINLINE bool GetAiming() const { return bAiming; }
+	FORCEINLINE int8 GetOverlappedItemCount() const { return OverlappedItemCount; }
 
+	void IncrementOverlappedICount();
+	void DecrementOverlappedCount();
+	
 	UFUNCTION(BlueprintCallable)
 	float GetCrosshairSpreadMultiplier() const;
+
+	FVector GetCameraInterpLocation();
+
+	void GetPickupItem(ABaseItem* Item);
 };
