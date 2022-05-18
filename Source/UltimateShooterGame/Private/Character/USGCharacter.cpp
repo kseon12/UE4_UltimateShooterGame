@@ -55,7 +55,10 @@ AUSGCharacter::AUSGCharacter() :
 	bShouldTraceForItem(false),
 	//Item iterp values
 	CameraInterpDistance(250.f),
-	CameraInterpElevation(65.f)
+	CameraInterpElevation(65.f),
+	//Starting Ammo
+	Starting9mmAmmo(100),
+	StartingARAmmo(200)
 {
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -94,6 +97,8 @@ void AUSGCharacter::BeginPlay()
 	}
 
 	EquipWeapon(SpawnDefaultWeapon());
+
+	InitializeAmmoMap();
 }
 
 ////////////////////////////////////////////////////////////
@@ -547,6 +552,14 @@ void AUSGCharacter::SwapWeapon(ABaseWeapon* Weapon)
 
 ////////////////////////////////////////////////////////////
 
+void AUSGCharacter::InitializeAmmoMap()
+{
+	AmmoMap.Add(EAmmoType::EAT_9mm, Starting9mmAmmo);
+	AmmoMap.Add(EAmmoType::EAT_AR, StartingARAmmo);
+}
+
+////////////////////////////////////////////////////////////
+
 void AUSGCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -623,11 +636,10 @@ FVector AUSGCharacter::GetCameraInterpLocation()
 void AUSGCharacter::GetPickupItem(ABaseItem* Item)
 {
 	ABaseWeapon* Weapon = Cast<ABaseWeapon>(Item);
-	if(Weapon)
+	if (Weapon)
 	{
 		SwapWeapon(Weapon);
 	}
-
 }
 
 ////////////////////////////////////////////////////////////
