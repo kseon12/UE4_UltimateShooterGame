@@ -58,7 +58,9 @@ AUSGCharacter::AUSGCharacter() :
 	CameraInterpElevation(65.f),
 	//Starting Ammo
 	Starting9mmAmmo(100),
-	StartingARAmmo(200)
+	StartingARAmmo(200),
+	//Combat variables
+	CombatState(ECombatState::ECS_Unoccupied)
 {
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -184,53 +186,17 @@ void AUSGCharacter::LookUp(float Value)
 
 void AUSGCharacter::FireWeapon()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Bullet is landed"));
+	if (!EquippedWeapon) return;
+	if (CombatState != ECombatState::ECS_Unoccupied) return;
+	if (!WeaponHasAmmo()) return;
 
-	if (FireSound)
-	{
-		UGameplayStatics::PlaySound2D(this, FireSound);
-	}
-
-	const USkeletalMeshSocket* BarrelSocket = GetMesh()->GetSocketByName("BarrelSocket");
-	if (BarrelSocket)
-	{
-		const FTransform SocketTransform = BarrelSocket->GetSocketTransform(GetMesh());
-
-		if (MuzzleFlash)
-		{
-			UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), MuzzleFlash, SocketTransform);
-		}
-
-		FVector BeamEnd;
-		bool bBeamEnd = GetBeamEndLocation(SocketTransform.GetLocation(), BeamEnd);
-
-		if (bBeamEnd)
-		{
-			if (ImpactParticles)
-			{
-				UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ImpactParticles, BeamEnd);
-			}
-
-			if (BeamParticles)
-			{
-				UParticleSystemComponent* Beam = UGameplayStatics::SpawnEmitterAtLocation(
-					GetWorld(), BeamParticles, SocketTransform);
-				if (Beam)
-				{
-					Beam->SetVectorParameter(FName("Target"), BeamEnd);
-				}
-			}
-		}
-	}
-
-	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-	if (AnimInstance && HipFireMontage)
-	{
-		AnimInstance->Montage_Play(HipFireMontage);
-		AnimInstance->Montage_JumpToSection(FName("StartFire"));
-	}
-
+	PlayFireSound();
+	SendBullet();
+	PlayGunfireMontage();
+	EquippedWeapon->DecrementAmmo();
 	StartCrosshairBulletFire();
+
+	StartFireTimer();
 }
 
 ////////////////////////////////////////////////////////////
@@ -373,8 +339,7 @@ void AUSGCharacter::FinishCrosshairBulletFire()
 void AUSGCharacter::FireButtonPressed()
 {
 	bFireButtonPressed = true;
-
-	StartFireTimer();
+	FireWeapon();
 }
 
 ////////////////////////////////////////////////////////////
@@ -388,24 +353,27 @@ void AUSGCharacter::FireButtonRelease()
 
 void AUSGCharacter::StartFireTimer()
 {
-	if (bShouldFire)
-	{
-		FireWeapon();
-		bShouldFire = false;
-
-		GetWorldTimerManager().SetTimer(AutoFireTimer, this, &AUSGCharacter::AutoFireReset, AutomaticFireRate);
-	}
+	CombatState = ECombatState::ECS_FireTimerInProgress;
+	GetWorldTimerManager().SetTimer(AutoFireTimer, this, &AUSGCharacter::AutoFireReset, AutomaticFireRate);
+	
 }
 
 ////////////////////////////////////////////////////////////
 
 void AUSGCharacter::AutoFireReset()
 {
-	bShouldFire = true;
+	CombatState = ECombatState::ECS_Unoccupied;
 
-	if (bFireButtonPressed)
+	if(WeaponHasAmmo())
 	{
-		StartFireTimer();
+		if(bFireButtonPressed)
+		{
+			FireWeapon();
+		}
+	}
+	else
+	{
+		ReloadWeapon();
 	}
 }
 
@@ -560,6 +528,146 @@ void AUSGCharacter::InitializeAmmoMap()
 
 ////////////////////////////////////////////////////////////
 
+bool AUSGCharacter::WeaponHasAmmo()
+{
+	if (!EquippedWeapon) return false;
+
+	return EquippedWeapon->GetAmmo() > 0;
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::PlayFireSound()
+{
+	if (FireSound)
+	{
+		UGameplayStatics::PlaySound2D(this, FireSound);
+	}
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::SendBullet()
+{
+	const USkeletalMeshSocket* BarrelSocket = EquippedWeapon->GetItemMesh()->GetSocketByName("BarrelSocket");
+	if (BarrelSocket)
+	{
+		const FTransform SocketTransform = BarrelSocket->GetSocketTransform(EquippedWeapon->GetItemMesh());
+
+		if (MuzzleFlash)
+		{
+			UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), MuzzleFlash, SocketTransform);
+		}
+
+		FVector BeamEnd;
+		bool bBeamEnd = GetBeamEndLocation(SocketTransform.GetLocation(), BeamEnd);
+
+		if (bBeamEnd)
+		{
+			if (ImpactParticles)
+			{
+				UGameplayStatics::SpawnEmitterAtLocation(EquippedWeapon->GetItemMesh(), ImpactParticles, BeamEnd);
+			}
+
+			if (BeamParticles)
+			{
+				UParticleSystemComponent* Beam = UGameplayStatics::SpawnEmitterAtLocation(
+					GetWorld(), BeamParticles, SocketTransform);
+				if (Beam)
+				{
+					Beam->SetVectorParameter(FName("Target"), BeamEnd);
+				}
+			}
+		}
+	}
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::PlayGunfireMontage()
+{
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (AnimInstance && HipFireMontage)
+	{
+		AnimInstance->Montage_Play(HipFireMontage);
+		AnimInstance->Montage_JumpToSection(FName("StartFire"));
+	}
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::ReloadButtonPressed()
+{
+	ReloadWeapon();
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::ReloadWeapon()
+{
+	if (CombatState != ECombatState::ECS_Unoccupied) return;
+	if (!EquippedWeapon) return;
+
+	if(CarryingAmmo())
+	{
+		CombatState = ECombatState::ECS_Reloading;
+
+		UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+		if(AnimInstance && ReloadMontage)
+		{
+			AnimInstance->Montage_Play(ReloadMontage);
+			AnimInstance->Montage_JumpToSection(EquippedWeapon->GetReloadMontageSection());
+		}
+	}
+}
+
+////////////////////////////////////////////////////////////
+
+void AUSGCharacter::FinishReloading()
+{
+	CombatState = ECombatState::ECS_Unoccupied;
+
+	if (!EquippedWeapon) return;
+
+	const auto AmmoType{ EquippedWeapon->GetAmmoType() };
+	if(AmmoMap.Contains(AmmoType))
+	{
+		int32 CarriedAmmo = AmmoMap[AmmoType];
+
+		const int32 MagEmptySpace = EquippedWeapon->GetMagazineCapacity() - EquippedWeapon->GetAmmo();
+		if(MagEmptySpace>CarriedAmmo)
+		{
+			EquippedWeapon->ReloadAmmo(CarriedAmmo);
+			CarriedAmmo = 0;
+			AmmoMap.Add(AmmoType, CarriedAmmo);
+		}
+		else
+		{
+			EquippedWeapon->ReloadAmmo(MagEmptySpace);
+			CarriedAmmo -= MagEmptySpace;
+			AmmoMap.Add(AmmoType, CarriedAmmo);
+		}
+	}
+}
+
+////////////////////////////////////////////////////////////
+
+bool AUSGCharacter::CarryingAmmo()
+{
+	if (!EquippedWeapon) return false;
+
+	auto AmmoType = EquippedWeapon->GetAmmoType();
+
+	if(AmmoMap.Contains(AmmoType))
+	{
+		return AmmoMap[AmmoType] > 0;
+	}
+
+	return false;
+}
+
+////////////////////////////////////////////////////////////
+
 void AUSGCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -595,6 +703,8 @@ void AUSGCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 
 	PlayerInputComponent->BindAction("Select", IE_Pressed, this, &AUSGCharacter::SelectButtonPressed);
 	PlayerInputComponent->BindAction("Select", IE_Released, this, &AUSGCharacter::SelectButtonReleased);
+
+	PlayerInputComponent->BindAction("ReloadButton", IE_Pressed, this, &AUSGCharacter::ReloadButtonPressed);
 }
 
 ////////////////////////////////////////////////////////////

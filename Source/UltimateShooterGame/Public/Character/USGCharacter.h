@@ -4,16 +4,18 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Utils/AmmoType.h"
 #include "USGCharacter.generated.h"
 
-UENUM(BlueprintType)
-enum class EAmmoType: uint8
-{
-	EAT_9mm UMETA(DisplayName = "9mm"),
-	EAT_AR UMETA(DisplayName = "Assault Rifle"),
-	EAT_MAX UMETA(DisplayName = "DefaultMAX")
-};
 
+UENUM(BlueprintType)
+enum class ECombatState : uint8
+{
+	ECS_Unoccupied UMETA(DisplayName = "Unoccupied"),
+	ECS_FireTimerInProgress UMETA(DisplayName = "FireTimerInProgress"),
+	ECS_Reloading UMETA(DisplayName = "Reloading"),
+	ECS_MAX UMETA(DisplayName = "DefaultMAX")
+};
 
 UCLASS()
 class ULTIMATESHOOTERGAME_API AUSGCharacter : public ACharacter
@@ -85,7 +87,7 @@ class ULTIMATESHOOTERGAME_API AUSGCharacter : public ACharacter
 	float CameraCurrentFOV;
 
 	/** Speed of transition between Normal and Aiming FOV*/
-	UPROPERTY(EditAnywhere,BlueprintReadWrite, Category = Combat, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Combat, meta = (AllowPrivateAccess = "true"))
 	float ZoomInterpSpeed;
 
 	/** Crosshair variables */
@@ -114,7 +116,7 @@ class ULTIMATESHOOTERGAME_API AUSGCharacter : public ACharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Items, meta = (AllowPrivateAccess = "true"))
 	class ABaseItem* TraceHitItemLastFrame;
 
-	UPROPERTY(VisibleAnywhere,BlueprintReadOnly, Category = Combat, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Combat, meta = (AllowPrivateAccess = "true"))
 	class ABaseWeapon* EquippedWeapon;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Combat, meta = (AllowPrivateAccess = "true"))
@@ -125,7 +127,7 @@ class ULTIMATESHOOTERGAME_API AUSGCharacter : public ACharacter
 	ABaseItem* TraceHitItem;
 
 	/** Distance outward from camera for the interp destination */
-	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = Items, meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Items, meta = (AllowPrivateAccess = "true"))
 	float CameraInterpDistance;
 
 	/** Distance upward from the camera for the interp destination */
@@ -141,7 +143,11 @@ class ULTIMATESHOOTERGAME_API AUSGCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Items, meta = (AllowPrivateAccess = "true"))
 	int32 StartingARAmmo;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Combat, meta = (AllowPrivateAccess = "true"))
+	ECombatState CombatState;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Combat, meta = (AllowPrivateAccess = "true"))
+	UAnimMontage* ReloadMontage;
 protected:
 	virtual void BeginPlay() override;
 
@@ -190,7 +196,7 @@ protected:
 
 	void CalculateCrosshairSpread(float DeltaTime);
 
-	
+
 	void StartCrosshairBulletFire();
 	UFUNCTION()
 	void FinishCrosshairBulletFire();
@@ -217,10 +223,22 @@ protected:
 	void SwapWeapon(ABaseWeapon* Weapon);
 
 	void InitializeAmmoMap();
-public:
 
+	bool WeaponHasAmmo();
+
+	void PlayFireSound();
+	void SendBullet();
+	void PlayGunfireMontage();
+
+	void ReloadButtonPressed();
+	void ReloadWeapon();
+	UFUNCTION(BlueprintCallable)
+	void FinishReloading();
+
+	bool CarryingAmmo();
+public:
 	AUSGCharacter();
-	
+
 	virtual void Tick(float DeltaTime) override;
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
@@ -232,7 +250,7 @@ public:
 
 	void IncrementOverlappedICount();
 	void DecrementOverlappedCount();
-	
+
 	UFUNCTION(BlueprintCallable)
 	float GetCrosshairSpreadMultiplier() const;
 
